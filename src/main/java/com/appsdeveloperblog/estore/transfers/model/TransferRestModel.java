@@ -7,6 +7,14 @@ public class TransferRestModel {
     private String recepientId;
     private BigDecimal amount;
 
+    public TransferRestModel() {}
+
+    public TransferRestModel(String senderId, String recipientId, BigDecimal amount) {
+        this.senderId = senderId;
+        this.recepientId = recipientId;
+        this.amount = amount;
+    }
+
     public BigDecimal getAmount() {
         return amount;
     }

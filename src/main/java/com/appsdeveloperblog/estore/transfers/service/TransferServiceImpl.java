@@ -1,9 +1,13 @@
 package com.appsdeveloperblog.estore.transfers.service;
 
 import java.net.ConnectException;
+import java.util.UUID;
 
+import com.appsdeveloperblog.estore.transfers.io.TransferEntity;
+import com.appsdeveloperblog.estore.transfers.repository.TransferEntityRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeanUtils;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -25,15 +29,18 @@ public class TransferServiceImpl implements TransferService {
 	private KafkaTemplate<String, Object> kafkaTemplate;
 	private Environment environment;
 	private RestTemplate restTemplate;
+	private TransferEntityRepository transferEntityRepository;
 
 	public TransferServiceImpl(KafkaTemplate<String, Object> kafkaTemplate, Environment environment,
-			RestTemplate restTemplate) {
+			RestTemplate restTemplate,
+		    TransferEntityRepository transferEntityRepository) {
 		this.kafkaTemplate = kafkaTemplate;
 		this.environment = environment;
 		this.restTemplate = restTemplate;
+		this.transferEntityRepository = transferEntityRepository;
 	}
 
-	@Transactional
+	@Transactional("transactionManager")
 	@Override
 	public boolean transfer(TransferRestModel transferRestModel) {
 		WithdrawalRequestedEvent withdrawalEvent = new WithdrawalRequestedEvent(transferRestModel.getSenderId(),
@@ -42,12 +49,16 @@ public class TransferServiceImpl implements TransferService {
 				transferRestModel.getRecepientId(), transferRestModel.getAmount());
 
 		try {
+			TransferEntity transfer = new TransferEntity();
+			BeanUtils.copyProperties(transferRestModel, transfer);
+			transfer.setTransferId(UUID.randomUUID().toString());
+			transferEntityRepository.save(transfer);
 			kafkaTemplate.send(environment.getProperty("withdraw-money-topic", "withdraw-money-topic"),
 					withdrawalEvent);
 			LOGGER.info("Sent event to withdrawal topic.");
 
 			// Business logic that causes and error
-			callRemoteServce();
+			callRemoteService();
 
 			kafkaTemplate.send(environment.getProperty("deposit-money-topic", "deposit-money-topic"), depositEvent);
 			LOGGER.info("Sent event to deposit topic");
@@ -60,7 +71,7 @@ public class TransferServiceImpl implements TransferService {
 		return true;
 	}
 
-	private ResponseEntity<String> callRemoteServce() throws Exception {
+	private ResponseEntity<String> callRemoteService() throws Exception {
 		String requestUrl = "http://localhost:8082/response/200";
 		ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
 
